@@ -47,6 +47,36 @@ UNIX, so the minutae are left as an exercise. A safe approach:
    the child to avoid deadlock.)
 3. Wait for the child process (using :func:`os.waitpid()`) to clean up its
    system resources.
+
+Setting up your environment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TODO link to big docs]
+
+Your system must have ``libcap.so.2`` installed. In Debian, the ``libcap2``
+package provides it.
+
+Pyspawner relies on Linux's ``clone()`` system call to create child-process
+containers. If you're using pyspawner from a Docker container, subcontainer
+are disabled by default. Run Docker with
+``--seccomp-opt=/path/to/pyspawner/docker/pyspawner-seccomp-profile.json`` to
+allow creating subcontainers.
+
+By default, sandboxed children cannot access the Internet. If you want to
+enable networking for child processes, ensure your process has the
+``CAP_NET_ADMIN`` capability. (``docker run --cap-add NET_ADMIN ...``).
+Also, you'll need to configure NAT in the parent-process environment ...
+which is beyond the scope of this README. Finally, you may want to supply a
+``chroot_dir`` to give child processes a custom ``/etc/resolv.conf``.
+
+Ideally, sandboxed children would not be able to write anywhere on the main
+filesystem. Unfortunately, the ``umount()`` and ``pivot_root()`` system calls
+are restricted in many environments. As a placeholder, you're encouraged to
+supply a ``chroot_dir`` to provide an environment for your sandboxed child
+code. ``chroot_dir`` must be in a separate filesystem from the root filesystem.
+(In the future, when the Linux container ecosystem evolves enough,
+``chroot_dir`` will make children unmount the root filesystem.) Again, chroot
+is beyond the scope of this README.
 """
 from .client import ChildProcess, Client
 from .protocol import NetworkConfig, SandboxConfig

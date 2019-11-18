@@ -52,6 +52,8 @@ Setting up your environment
 
 [TODO link to big docs]
 
+Your system must have ``libcap.so.2`` installed.
+
 Pyspawner relies on Linux's ``clone()`` system call to create child-process
 containers. If you're using pyspawner from a Docker container, subcontainer
 are disabled by default. Run Docker with

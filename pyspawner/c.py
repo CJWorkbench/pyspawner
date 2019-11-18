@@ -2,13 +2,33 @@ import ctypes
 import os
 import signal
 import struct
+import sys
+import textwrap
 from typing import Callable
 
 libc = ctypes.CDLL("libc.so.6", use_errno=True)
-libcap = ctypes.CDLL("libcap.so.2", use_errno=True)
-libcap.cap_init.restype = ctypes.c_void_p
-libcap.cap_set_proc.argtypes = [ctypes.c_void_p]
-libcap.cap_free.argtypes = [ctypes.c_void_p]
+
+try:
+    libcap = ctypes.CDLL("libcap.so.2", use_errno=True)
+    libcap.cap_init.restype = ctypes.c_void_p
+    libcap.cap_set_proc.argtypes = [ctypes.c_void_p]
+    libcap.cap_free.argtypes = [ctypes.c_void_p]
+except OSError as err:
+    if "READTHEDOCS" in os.environ:
+        pass  # sphinx doesn't need libcap
+    else:
+        print(
+            textwrap.dedent(
+                """
+                *** pyspawner could not load libcap.so.2 ***
+                pyspawner uses libcap2 to drop capabilities. This is a crucial
+                sandboxing feature. Please install libcap2.
+                """
+            ),
+            file=sys.stderr,
+        )
+        raise
+
 # <linux/prctl.h>
 PR_SET_NAME = 15
 PR_SET_SECCOMP = 22
