@@ -1,5 +1,5 @@
-Pycloner
-========
+Pyspawner
+=========
 
 .. toctree::
     :maxdepth: 2

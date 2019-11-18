@@ -39,7 +39,7 @@ class CloneFds:
 
     Here's an illustration:
 
-        PYCLONER:
+        PYSPAWNER:
             clone_fds = CloneFds.create()
             child_pid = clone() [spawning CHILD _and_ continuing]
             pyspawner_fds = clone_fds.become_pyspawner()
