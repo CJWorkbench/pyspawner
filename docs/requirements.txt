@@ -1,1 +1,2 @@
 pyroute2==0.5.7
+sphinx_autodoc_typehints==1.10.3
