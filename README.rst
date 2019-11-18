@@ -3,11 +3,11 @@ Clone sandboxed Python processes quickly and securely.
 Usage
 =====
 
-Create a :class:`pyspawner.Client` that imports the "common" Python imports
+Create a ``pyspawner.Client`` that imports the "common" Python imports
 your sandboxed code will run. (These ``import`` statements aren't sandboxed,
 so be sure you trust the Python modules.)
 
-Then call :meth:`pyspawner.Client.spawn_child()` each time you want to create
+Then call ``pyspawner.Client.spawn_child()`` each time you want to create
 a new child. It will invoke the pyspawner's ``child_main`` function with the
 given arguments.
 
@@ -38,13 +38,13 @@ For each child, read from stdout and stderr until end-of-file; then wait() for
 the process to exit. Reading from two pipes at once is a standard exercise in
 UNIX, so the minutae are left as an exercise. A safe approach:
 
-1. Register both stdout and stderr in a :class:`selectors.DefaultSelector`
-2. loop, calling :meth:`selectors.BaseSelector.select()` and reading from
+1. Register both stdout and stderr in a ``selectors.DefaultSelector``
+2. loop, calling ``selectors.BaseSelector.select()`` and reading from
    whichever file descriptors have data. Unregister whichever file descriptors
    reach EOF; and read but _ignore_ data past a predetermined buffer size. Kill
    the child process if this is taking too long. (Keep reading after killing
    the child to avoid deadlock.)
-3. Wait for the child process (using :func:`os.waitpid()`) to clean up its
+3. Wait for the child process (using ``os.waitpid()``) to clean up its
    system resources.
 
 Setting up your environment
@@ -95,13 +95,17 @@ To add or fix features:
 Releasing
 =========
 
-1. Write to `CHANGELOG.md`
-2. `git commit`
-3. `git tag VERSION` (use semver -- e.g., `v1.2.3`)
-4. `git push --tags && git push`
-5. Wait; Docker Hub will publish the new image
+1. Run ``./test.sh`` and ``sphinx-build docs docs/build`` to check for errors.
+2. Write a new version in ``pyspawner/__init__.py``. Use semver -- e.g., ``1.2.3``.
+3. Write a ``CHANGELOG.rst`` entry.
+4. ``git commit``
+5. ``git tag VERSION`` (use semver with a ``v`` -- e.g., ``v1.2.3``)
+6. ``git push --tags && git push``
+7. ``python3 ./setup.py sdist``
+8. ``twine upload dist/*``
 
 
-License:
+License
+=======
 
-BSD
+MIT. See ``LICENSE.txt``.
