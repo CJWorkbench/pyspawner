@@ -1,5 +1,11 @@
 Clone sandboxed Python processes quickly and securely.
 
+Documentation
+=============
+
+Documentation is available at `https://pyspawner.readthedocs.io
+<https://pyspawner.readthedocs.io/>`_.
+
 Usage
 =====
 
