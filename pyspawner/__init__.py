@@ -1,6 +1,12 @@
 """
 Subprocess that spawns children quickly, using clone().
 
+How it works
+~~~~~~~~~~~~
+
+Read an `Explainer
+<https://medium.com/@adamhooper/sandboxing-data-crunches-chapter-2-clone-processes-56735977305a>`_.
+
 How to use
 ~~~~~~~~~~
 
@@ -50,8 +56,6 @@ UNIX, so the minutae are left as an exercise. A safe approach:
 
 Setting up your environment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-[TODO link to big docs]
 
 Your system must have ``libcap.so.2`` installed. In Debian, the ``libcap2``
 package provides it.
