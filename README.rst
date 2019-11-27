@@ -56,8 +56,6 @@ UNIX, so the minutae are left as an exercise. A safe approach:
 Setting up your environment
 ===========================
 
-[TODO link to big docs]
-
 Your system must have ``libcap.so.2`` installed.
 
 Pyspawner relies on Linux's ``clone()`` system call to create child-process
