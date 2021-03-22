@@ -8,7 +8,7 @@ readme = open(os.path.join(os.path.dirname(__file__), "README.rst")).read()
 
 setup(
     name="pyspawner",
-    version="0.9.1",  # also edit pyspawner/__init__.py when editing this
+    version="0.9.2",  # also edit pyspawner/__init__.py when editing this
     author="Adam Hooper",
     author_email="adam@adamhooper.com",
     url="https://github.com/CJWorkbench/pyspawner",

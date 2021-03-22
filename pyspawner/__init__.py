@@ -87,4 +87,4 @@ from .protocol import NetworkConfig, SandboxConfig
 
 __all__ = ["Client", "ChildProcess", "NetworkConfig", "SandboxConfig"]
 
-__version__ = "0.9.1"
+__version__ = "0.9.2"

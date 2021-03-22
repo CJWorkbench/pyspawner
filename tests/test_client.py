@@ -24,11 +24,11 @@ def child_main(indented_code: str) -> None:
 
 @contextlib.contextmanager
 def _spawned_child_context(
-    server: pyspawner.Client,
+    client: pyspawner.Client,
     args: List[Any] = [],
     sandbox_config: pyspawner.SandboxConfig = pyspawner.SandboxConfig(),
 ) -> ContextManager[pyspawner.ChildProcess]:
-    subprocess = server.spawn_child(
+    subprocess = client.spawn_child(
         args, process_name="pyspawner-test", sandbox_config=sandbox_config
     )
     try:
@@ -52,18 +52,75 @@ def _spawned_child_context(
             pass
 
 
+def _spawn_and_communicate(
+    client: pyspawner.Client,
+    indented_code: str,
+    stdin: bytes = b"",
+    chroot_dir: Optional[Path] = None,
+    network_config: Optional[pyspawner.NetworkConfig] = None,
+    skip_sandbox_except: FrozenSet[str] = frozenset(),
+) -> Tuple[int, bytes, bytes]:
+    """Spawn, execute `indented_code`, and return (exitcode, stdout, stderr).
+
+    This will never error.
+    """
+    with _spawned_child_context(
+        client,
+        args=[indented_code],
+        sandbox_config=pyspawner.SandboxConfig(
+            chroot_dir=chroot_dir,
+            network=network_config,
+            skip_sandbox_except=skip_sandbox_except,
+        ),
+    ) as subprocess:
+        subprocess.stdin.write(stdin)
+        subprocess.stdin.close()
+        stdout = subprocess.stdout.read()
+        stderr = subprocess.stderr.read()
+        subprocess.stdout.close()
+        subprocess.stderr.close()
+        _, status = subprocess.wait(0)
+        if os.WIFSIGNALED(status):
+            exitcode = -os.WTERMSIG(status)
+        elif os.WIFEXITED(status):
+            exitcode = os.WEXITSTATUS(status)
+        else:
+            raise OSError("Unexpected status: %d" % status)
+        return exitcode, stdout, stderr
+
+
+def _spawn_and_communicate_or_raise(
+    client: pyspawner.Client,
+    indented_code: str,
+    chroot_dir: Optional[Path] = None,
+    network_config: Optional[pyspawner.NetworkConfig] = None,
+    skip_sandbox_except: FrozenSet[str] = frozenset(),
+) -> None:
+    """Like _spawn_and_communicate(), but raise if exit code is not 0."""
+    exitcode, stdout, stderr = _spawn_and_communicate(
+        client,
+        indented_code,
+        chroot_dir=chroot_dir,
+        network_config=network_config,
+        skip_sandbox_except=skip_sandbox_except,
+    )
+    self.assertEqual(exitcode, 0, "Exit code %d: %r" % (exitcode, stderr))
+    self.assertEqual(stderr, b"", "Unexpected stderr: %r" % stderr)
+    self.assertEqual(stdout, b"", "Unexpected stdout: %r" % stdout)
+
+
 class PyspawnerTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls._pyspawner = pyspawner.Client(
+        cls._client = pyspawner.Client(
             child_main="tests.test_client.child_main",
             environment={"LC_CTYPE": "C.UTF-8", "TEST_ENV": "yes"},
         )
 
     @classmethod
     def tearDownClass(cls):
-        cls._pyspawner.close()
-        del cls._pyspawner
+        cls._client.close()
+        del cls._client
 
     def setUp(self):
         super().setUp()
@@ -74,65 +131,9 @@ class PyspawnerTest(unittest.TestCase):
         shutil.rmtree(self.chroot_dir)
         super().tearDown()
 
-    def _spawn_and_communicate(
-        self,
-        indented_code: str,
-        stdin: bytes = b"",
-        chroot_dir: Optional[Path] = None,
-        network_config: Optional[pyspawner.NetworkConfig] = None,
-        skip_sandbox_except: FrozenSet[str] = frozenset(),
-    ) -> Tuple[int, bytes, bytes]:
-        """
-        Spawn, execute `indented_code`, and return (exitcode, stdout, stderr).
-
-        This will never error.
-        """
-        with _spawned_child_context(
-            self._pyspawner,
-            args=[indented_code],
-            sandbox_config=pyspawner.SandboxConfig(
-                chroot_dir=chroot_dir,
-                network=network_config,
-                skip_sandbox_except=skip_sandbox_except,
-            ),
-        ) as subprocess:
-            subprocess.stdin.write(stdin)
-            subprocess.stdin.close()
-            stdout = subprocess.stdout.read()
-            stderr = subprocess.stderr.read()
-            subprocess.stdout.close()
-            subprocess.stderr.close()
-            _, status = subprocess.wait(0)
-            if os.WIFSIGNALED(status):
-                exitcode = -os.WTERMSIG(status)
-            elif os.WIFEXITED(status):
-                exitcode = os.WEXITSTATUS(status)
-            else:
-                raise OSError("Unexpected status: %d" % status)
-            return exitcode, stdout, stderr
-
-    def _spawn_and_communicate_or_raise(
-        self,
-        indented_code: str,
-        chroot_dir: Optional[Path] = None,
-        network_config: Optional[pyspawner.NetworkConfig] = None,
-        skip_sandbox_except: FrozenSet[str] = frozenset(),
-    ) -> None:
-        """
-        Like _spawn_and_communicate(), but raise if exit code is not 0.
-        """
-        exitcode, stdout, stderr = self._spawn_and_communicate(
-            indented_code,
-            chroot_dir=chroot_dir,
-            network_config=network_config,
-            skip_sandbox_except=skip_sandbox_except,
-        )
-        self.assertEqual(exitcode, 0, "Exit code %d: %r" % (exitcode, stderr))
-        self.assertEqual(stderr, b"", "Unexpected stderr: %r" % stderr)
-        self.assertEqual(stdout, b"", "Unexpected stdout: %r" % stdout)
-
     def test_stdout_stderr(self):
-        exitcode, stdout, stderr = self._spawn_and_communicate(
+        exitcode, stdout, stderr = _spawn_and_communicate(
+            self._client,
             r"""
             import os
             import sys
@@ -142,20 +143,23 @@ class PyspawnerTest(unittest.TestCase):
             sys.__stderr__.write("__stderr__\n")
             os.write(1, b"fd1\n")
             os.write(2, b"fd2\n")
-            """
+            """,
         )
         self.assertEqual(exitcode, 0)
         self.assertEqual(stdout, b"stdout\n__stdout__\nfd1\n")
         self.assertEqual(stderr, b"stderr\n__stderr__\nfd2\n")
 
     def test_exception_goes_to_stderr(self):
-        exitcode, stdout, stderr = self._spawn_and_communicate("import abaskjdgh")
+        exitcode, stdout, stderr = _spawn_and_communicate(
+            self._client, "import abaskjdgh"
+        )
         self.assertEqual(exitcode, 1)
         self.assertEqual(stdout, b"")
         self.assertRegex(stderr, b"ModuleNotFoundError")
 
     def test_stdin(self):
-        exitcode, stdout, stderr = self._spawn_and_communicate(
+        exitcode, stdout, stderr = _spawn_and_communicate(
+            self._client,
             r"""
             import sys
             sys.stdout.write(sys.stdin.read())
@@ -167,7 +171,8 @@ class PyspawnerTest(unittest.TestCase):
         self.assertEqual(exitcode, 0)
 
     def test_SECURITY_use_environment(self):
-        self._spawn_and_communicate_or_raise(
+        _spawn_and_communicate_or_raise(
+            self._client,
             r"""
             import os
             env = dict(os.environ)
@@ -175,13 +180,14 @@ class PyspawnerTest(unittest.TestCase):
                 "LC_CTYPE": "C.UTF-8",
                 "TEST_ENV": "yes",
             }, "Got wrong os.environ: %r" % env
-            """
+            """,
         )
 
     def test_SECURITY_sock_and_any_other_fds_are_closed(self):
         # The user cannot access pipes or files outside its sandbox (aside from
         # stdout+stderr, which the parent process knows are untrusted).
-        self._spawn_and_communicate_or_raise(
+        _spawn_and_communicate_or_raise(
+            self._client,
             r"""
             import os
             for badfd in list(range(3, 20)):
@@ -190,7 +196,7 @@ class PyspawnerTest(unittest.TestCase):
                     raise RuntimeError("fd %d is unexpectedly open" % badfd)
                 except OSError as err:
                     assert err.args[0] == 9  # Bad file descriptor
-            """
+            """,
         )
 
     def test_SECURITY_parent_ip_is_off_limits(self):
@@ -203,7 +209,8 @@ class PyspawnerTest(unittest.TestCase):
             s.bind((host_ip, port))
             s.listen(1)
 
-            self._spawn_and_communicate_or_raise(
+            _spawn_and_communicate_or_raise(
+                self._client,
                 r"""
                 import errno
                 import socket
@@ -224,7 +231,8 @@ class PyspawnerTest(unittest.TestCase):
         postgres_ip = "10.2.3.4"
         port = 5432
 
-        self._spawn_and_communicate_or_raise(
+        _spawn_and_communicate_or_raise(
+            self._client,
             r"""
             import errno
             import socket
@@ -240,7 +248,8 @@ class PyspawnerTest(unittest.TestCase):
         )
 
     def test_SECURITY_network_none_means_no_networking(self):
-        self._spawn_and_communicate_or_raise(
+        _spawn_and_communicate_or_raise(
+            self._client,
             r"""
             import errno
             import socket
@@ -259,7 +268,8 @@ class PyspawnerTest(unittest.TestCase):
     # In the meantime: if you're going to fiddle with iptables, remember to
     # uncomment these tests during development.
     # def test_network_external_dns(self):
-    #     self._spawn_and_communicate_or_raise(
+    #     _spawn_and_communicate_or_raise(
+    #         self._client,
     #         r"""
     #         import socket
     #         socket.gethostbyname("example.com")  # don't crash
@@ -269,7 +279,8 @@ class PyspawnerTest(unittest.TestCase):
     #     )
     #
     # def test_network_external_ip(self):
-    #     self._spawn_and_communicate_or_raise(
+    #     _spawn_and_communicate_or_raise(
+    #         self._client,
     #         r"""
     #         import socket
     #         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -282,7 +293,8 @@ class PyspawnerTest(unittest.TestCase):
     def test_SECURITY_no_capabilities(self):
         # Even if the user becomes root, the Linux "capabilities" system
         # restricts syscalls that might leak outside the container.
-        self._spawn_and_communicate_or_raise(
+        _spawn_and_communicate_or_raise(
+            self._client,
             r"""
             import ctypes
             import os
@@ -308,7 +320,8 @@ class PyspawnerTest(unittest.TestCase):
         )
 
     def test_SECURITY_prevent_writing_uid_map(self):
-        self._spawn_and_communicate_or_raise(
+        _spawn_and_communicate_or_raise(
+            self._client,
             r"""
             from pathlib import Path
 
@@ -331,7 +344,8 @@ class PyspawnerTest(unittest.TestCase):
         )
 
     def test_SECURITY_chroot_has_no_proc_dir(self):
-        self._spawn_and_communicate_or_raise(
+        _spawn_and_communicate_or_raise(
+            self._client,
             r"""
             import os
 
@@ -343,7 +357,8 @@ class PyspawnerTest(unittest.TestCase):
         )
 
     def test_SECURITY_chroot_ensures_cwd_is_under_root(self):
-        self._spawn_and_communicate_or_raise(
+        _spawn_and_communicate_or_raise(
+            self._client,
             r"""
             import os
 
@@ -357,7 +372,8 @@ class PyspawnerTest(unittest.TestCase):
         arch = platform.machine()
         shutil.copy2("tests/hello-world." + arch, self.chroot_dir / "hello-world")
 
-        self._spawn_and_communicate_or_raise(
+        _spawn_and_communicate_or_raise(
+            self._client,
             r"""
             import subprocess
             result = subprocess.run(["/hello-world"], capture_output=True)
@@ -376,7 +392,8 @@ class PyspawnerTest(unittest.TestCase):
         # test_SECURITY_seccomp(), which overrides this one. (On production,
         # seccomp will kill -31 the process; the kernel will never get a chance
         # to set EPERM.)
-        self._spawn_and_communicate_or_raise(
+        _spawn_and_communicate_or_raise(
+            self._client,
             r"""
             import os
             assert os.getuid() == 1000
@@ -399,7 +416,8 @@ class PyspawnerTest(unittest.TestCase):
         # We test setuid() because it's an obvious one. See also
         # test_SECURITY_setuid(), which tests that seccomp is not the only
         # thing protecting us from setuid.
-        exitcode, stdout, stderr = self._spawn_and_communicate(
+        exitcode, stdout, stderr = _spawn_and_communicate(
+            self._client,
             r"""
             import os
             os.setuid(2)
@@ -426,7 +444,8 @@ class PyspawnerTest(unittest.TestCase):
             shutil.copy("/usr/bin/id", prog.name)
             os.chown(prog.name, 0, 0)  # make doubly sure root owns it
             os.chmod(prog.name, 0o755 | stat.S_ISUID | stat.S_ISGID)
-            exitcode, stdout, stderr = self._spawn_and_communicate(
+            exitcode, stdout, stderr = _spawn_and_communicate(
+                self._client,
                 r"""
                 import os
                 os.execv(%r, [%r])
@@ -441,3 +460,19 @@ class PyspawnerTest(unittest.TestCase):
                 assert False, stderr
             self.assertEqual(exitcode, 0)
             self.assertEqual(stdout, b"uid=1000 gid=1000 groups=1000\n")
+
+
+class ClientTest(unittest.TestCase):
+    def test_executable(self):
+        with pyspawner.Client(
+            child_main="tests.test_client.child_main",
+            environment={"LC_CTYPE": "C.UTF-8"},
+            executable="/usr/bin/python3.8",
+        ) as client:
+            _spawn_and_communicate_or_raise(
+                self._client,
+                r"""
+                import sys
+                assert sys.executable == "/usr/bin/python3.8"
+                """,
+            )

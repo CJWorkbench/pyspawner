@@ -1,4 +1,4 @@
-FROM python:3.7.5-slim-buster
+FROM python:3.8.8-slim-buster
 
 # libcap2: used by pyspawner (via ctypes) to drop capabilities
 # iproute2: used by setup-sandbox.sh (for testing)

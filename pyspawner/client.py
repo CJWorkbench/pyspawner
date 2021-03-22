@@ -104,6 +104,8 @@ class Client:
     :param preload_imports: List of module names pyspawner should import at
                             startup. These modules (plus pyspawner's internal
                             imports) will be preloaded in all child processes.
+    :param executable: Python executable to invoke. (Default: current-process
+                       executable).
     """
 
     def __init__(
@@ -112,13 +114,14 @@ class Client:
         child_main: str,
         environment: Dict[str, str] = {},
         preload_imports: List[str] = [],
+        executable: str = sys.executable,
     ):
         # We rely on Python's os.fork() internals to close FDs and run a child
         # process.
         self._socket, child_socket = socket.socketpair(socket.AF_UNIX)
         self._process = subprocess.Popen(
             [
-                sys.executable,
+                executable,
                 "-u",  # PYTHONUNBUFFERED: parents read children's data sooner
                 "-c",
                 'import pyspawner.main; pyspawner.main.pyspawner_main("%s", "%s", %d)'
